@@ -8,7 +8,7 @@ import {parseYouTube} from './youtube';
 export default function Home(){
   const canvas=useRef<HTMLCanvasElement>(null),audio=useRef<HTMLAudioElement>(null);
   const engine=useRef<SoundEngine|null>(null),fileUrl=useRef('');
-  const settings=useRef({paused:false,connected:false,intensity:1,sound:false});
+  const settings=useRef({paused:false,connected:false,intensity:1,sound:false,musicPaused:false});
   const [immersed,setImmersed]=useState(false),[paused,setPaused]=useState(false),[mode,setMode]=useState('demo');
   const [message,setMessage]=useState(''),[filename,setFilename]=useState(''),[busy,setBusy]=useState(false),[sound,setSound]=useState(false);
   const [youtube,setYoutube]=useState(''),[player,setPlayer]=useState<{embed:string;url:string}|null>(null);
@@ -25,7 +25,7 @@ export default function Home(){
     await engine.current.context.resume();return engine.current;
   }
   function disconnect(){
-    settings.current.connected=false;const e=engine.current;
+    settings.current.connected=false;settings.current.musicPaused=false;const e=engine.current;
     if(e){e.source?.disconnect();e.source=undefined;const stream=e.stream;e.stream=undefined;stream?.getTracks().forEach(t=>t.stop());}
     audio.current?.pause();setMode('demo');
   }
@@ -37,7 +37,6 @@ export default function Home(){
       stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
       if(!stream.getAudioTracks().length){stream.getTracks().forEach(t=>t.stop());setMessage('소리가 공유되지 않았어요. 음악이 나오는 Chrome 탭을 고르고 ‘탭 오디오 공유’를 켜 주세요.');return;}
       const e=await prepare();disconnect();e.stream=stream;e.source=e.context.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));e.source.connect(e.analyser);settings.current.connected=true;setMode('shared');
-      settings.current.sound=false;setSound(false);
       const current=stream;stream.getTracks().forEach(t=>t.addEventListener('ended',()=>{if(engine.current?.stream===current){disconnect();setMessage('소리 연결이 끝나 자동 불꽃으로 돌아왔어요.');}}));
     }catch(error){stream?.getTracks().forEach(t=>t.stop());setMessage(error instanceof DOMException&&error.name==='NotAllowedError'?'소리 공유가 취소되었거나 허용되지 않았어요. 다시 연결하거나 음악 파일을 골라 주세요.':'소리를 연결하지 못했어요. Chrome에서 다시 시도하거나 음악 파일을 골라 주세요.');}
     finally{setBusy(false);}
@@ -52,7 +51,7 @@ export default function Home(){
   function loadYoutube(value=youtube){try{const next=parseYouTube(value);disconnect();setPlayer(next);setYoutube(value);setMessage('플레이어에서 재생을 누른 뒤, ‘소리 연결’에서 이 페이지 탭과 탭 오디오 공유를 선택하세요. 선택이 안 되면 ‘유튜브에서 열기’로 연 탭을 연결하세요.');}catch(error){setMessage((error as Error).message);}}
   function togglePause(){const next=!paused;setPaused(next);settings.current.paused=next;}
   async function toggleSound(){try{await prepare();settings.current.sound=!sound;setSound(!sound);}catch{setMessage('효과음을 켜지 못했어요. 다시 눌러 주세요.');}}
-  async function fullscreen(){setImmersed(true);if(mode!=='shared'){void prepare().then(()=>{settings.current.sound=true;setSound(true);}).catch(()=>setMessage('소리를 켜지 못했어요. 효과음 버튼으로 다시 시도해 주세요.'));}try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.();}catch{setMessage('전체 화면을 열지 못했지만, 이 화면에서 계속 감상할 수 있어요.');}}
+  async function fullscreen(){setImmersed(true);try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.();}catch{setMessage('전체 화면을 열지 못했지만, 이 화면에서 계속 감상할 수 있어요.');}}
   return <main className={immersed?'immersed':''}>
     <canvas ref={canvas} aria-label="한강 둔치 1열에서 올려다보는 3D 불꽃축제. 드래그와 방향키로 시점 이동, R로 정면 복귀" />
     <header className="chrome"><Link className="brand" href="/">한강, 우리 둘<span>OUR OWN FIREWORKS</span></Link><span className="location"><i/> 여의도 · 우리만의 명당</span></header>
@@ -64,11 +63,11 @@ export default function Home(){
       <button className="live-link" onClick={()=>loadYoutube('https://www.youtube.com/watch?v=nLZKpuCxmpM')}>↗ 한화 2026 공식 중계 불러오기</button>
       <div className="music-actions"><button onClick={connectSound} disabled={busy}>{busy?'연결 중…':'소리 연결'} <span>↗</span></button><label className="file-button">음악 파일 선택<input type="file" accept="audio/*" disabled={busy} onChange={e=>{void chooseFile(e.target.files?.[0]);e.target.value='';}}/></label></div>
       <p className="hint">음악이 나오는 Chrome 탭 + ‘탭 오디오 공유’를 선택하세요.<br/>파일은 내 기기에서만 재생돼요. 공유한 화면은 저장하지 않아요.</p>
-      <audio ref={audio} controls hidden={mode!=='file'} onEnded={()=>{if(engine.current?.source===engine.current?.media)settings.current.connected=false;}} onPlay={()=>{if(engine.current?.source===engine.current?.media)settings.current.connected=true;}} onPause={()=>{if(engine.current?.source===engine.current?.media)settings.current.connected=false;}} onError={()=>{if(mode==='file'){disconnect();setMessage('지원되지 않거나 손상된 음악 파일이에요. 다른 파일을 선택해 주세요.');}}}/>
+      <audio ref={audio} controls hidden={mode!=='file'} onEnded={()=>{if(engine.current?.source===engine.current?.media)settings.current.musicPaused=true;}} onPlay={()=>{if(engine.current?.source===engine.current?.media){settings.current.connected=true;settings.current.musicPaused=false;}}} onPause={()=>{if(engine.current?.source===engine.current?.media)settings.current.musicPaused=true;}} onError={()=>{if(mode==='file'){disconnect();setMessage('지원되지 않거나 손상된 음악 파일이에요. 다른 파일을 선택해 주세요.');}}}/>
       {mode==='file'&&<p className="filename">{filename}</p>}
       {mode!=='demo'&&<button className="text-button" onClick={disconnect}>음악 연결 해제</button>}
       <div className="settings"><label htmlFor="intensity">불꽃 풍성함</label><input id="intensity" type="range" min="0.5" max="2" step="0.1" defaultValue="1" onChange={e=>{settings.current.intensity=Number(e.target.value);}}/><button onClick={togglePause}>{paused?'불꽃 재개':'잠시 멈춤'}</button></div>
-      <div className="sound-row"><button onClick={toggleSound} aria-pressed={sound}>효과음 {sound?'켜짐':'꺼짐'}</button><span>직접 만든 불꽃 소리 · 중계 연결 시 기본 꺼짐</span></div>
+      <div className="sound-row"><button onClick={toggleSound} aria-pressed={sound}>효과음 {sound?'켜짐':'꺼짐'}</button><span>발사·폭발에 맞춘 소리 · 음악 연결 중 작게 재생</span></div>
     </section>
     {player&&<aside className="youtube-player" aria-label="유튜브 플레이어"><div><span>오늘의 플레이리스트</span><a href={player.url} target="_blank" rel="noreferrer">유튜브에서 열기 ↗</a><button aria-label="유튜브 재생 종료" onClick={()=>{setPlayer(null);if(mode==='shared')disconnect();}}>×</button></div><iframe src={player.embed} title="유튜브 음악 또는 불꽃축제 중계" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/><p>재생 불가 영상·비공개 목록은 유튜브에서 열어 연결하세요.</p></aside>}
     {message&&<div className="notice" role="status">{message}<button onClick={()=>setMessage('')} aria-label="안내 닫기">×</button></div>}
