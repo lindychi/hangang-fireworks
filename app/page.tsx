@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {startFireworks,type SoundEngine} from './fireworks';
+import {startFireworks3D} from './fireworks3d';
 import {parseYouTube} from './youtube';
 
 export default function Home(){
@@ -13,7 +14,9 @@ export default function Home(){
   const [youtube,setYoutube]=useState(''),[player,setPlayer]=useState<{embed:string;url:string}|null>(null);
   useEffect(()=>{
     settings.current.paused=window.matchMedia('(prefers-reduced-motion: reduce)').matches;setPaused(settings.current.paused);
-    const stop=startFireworks(canvas.current!,settings.current,()=>engine.current);
+    let stop:()=>void;
+    try{stop=startFireworks3D(canvas.current!,settings.current,()=>engine.current);}
+    catch{stop=startFireworks(canvas.current!,settings.current,()=>engine.current);setMessage('이 기기에서는 3D를 실행하지 못해 기본 불꽃 화면으로 열었어요.');}
     const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setImmersed(false);};window.addEventListener('keydown',key);
     return ()=>{stop();window.removeEventListener('keydown',key);const e=engine.current;engine.current=null;e?.stream?.getTracks().forEach(t=>t.stop());void e?.context.close();if(fileUrl.current)URL.revokeObjectURL(fileUrl.current);};
   },[]);
@@ -49,11 +52,11 @@ export default function Home(){
   function loadYoutube(value=youtube){try{const next=parseYouTube(value);disconnect();setPlayer(next);setYoutube(value);setMessage('플레이어에서 재생을 누른 뒤, ‘소리 연결’에서 이 페이지 탭과 탭 오디오 공유를 선택하세요. 선택이 안 되면 ‘유튜브에서 열기’로 연 탭을 연결하세요.');}catch(error){setMessage((error as Error).message);}}
   function togglePause(){const next=!paused;setPaused(next);settings.current.paused=next;}
   async function toggleSound(){try{await prepare();settings.current.sound=!sound;setSound(!sound);}catch{setMessage('효과음을 켜지 못했어요. 다시 눌러 주세요.');}}
-  async function fullscreen(){setImmersed(true);try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.();}catch{setMessage('전체 화면을 열지 못했지만, 이 화면에서 계속 감상할 수 있어요.');}}
+  async function fullscreen(){setImmersed(true);if(mode!=='shared'){void prepare().then(()=>{settings.current.sound=true;setSound(true);}).catch(()=>setMessage('소리를 켜지 못했어요. 효과음 버튼으로 다시 시도해 주세요.'));}try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.();}catch{setMessage('전체 화면을 열지 못했지만, 이 화면에서 계속 감상할 수 있어요.');}}
   return <main className={immersed?'immersed':''}>
-    <canvas ref={canvas} aria-label="한강 밤하늘의 불꽃과 수면에 비치는 빛" />
+    <canvas ref={canvas} aria-label="한강 둔치 1열에서 올려다보는 3D 불꽃축제. 드래그와 방향키로 시점 이동, R로 정면 복귀" />
     <header className="chrome"><Link className="brand" href="/">한강, 우리 둘<span>OUR OWN FIREWORKS</span></Link><span className="location"><i/> 여의도 · 우리만의 명당</span></header>
-    <section className="invitation chrome"><p className="eyebrow">조금 늦게 도착한, 가장 좋은 자리</p><h1>오늘은<br/>여기가 <em>명당.</em></h1><p className="letter">그날 다 못 본 하늘을, 오늘은 마음껏.<br/>좋아하는 노래 하나 틀고, 우리 여기 앉아 있자.</p><button className="primary" onClick={fullscreen}>여기 앉아 감상하기 <span>↗</span></button><p className="small">하늘을 누르면, 그 자리에 불꽃이 피어나요.</p></section>
+    <section className="invitation chrome"><p className="eyebrow">한강 둔치 1열 · 우리만을 위한 밤</p><h1>오늘은<br/>여기가 <em>명당.</em></h1><p className="letter">그날 다 못 본 하늘을, 오늘은 마음껏.<br/>좋아하는 노래 하나 틀고, 우리 여기 앉아 있자.</p><button className="primary" onClick={fullscreen}>여기 앉아 감상하기 <span>↗</span></button><p className="small">드래그로 둘러보기 · 하늘을 눌러 불꽃 쏘기 · R로 정면</p></section>
     <section className="music chrome" aria-label="음악과 불꽃 설정">
       <div className="music-top"><span>♪ &nbsp; 오늘 밤의 배경음악</span><span className="badge">{mode==='demo'?'자동 불꽃':'음악 연결됨'}</span></div>
       <p>당신의 노래에, 하늘이 반짝이도록.</p>
@@ -70,6 +73,6 @@ export default function Home(){
     {player&&<aside className="youtube-player" aria-label="유튜브 플레이어"><div><span>오늘의 플레이리스트</span><a href={player.url} target="_blank" rel="noreferrer">유튜브에서 열기 ↗</a><button aria-label="유튜브 재생 종료" onClick={()=>{setPlayer(null);if(mode==='shared')disconnect();}}>×</button></div><iframe src={player.embed} title="유튜브 음악 또는 불꽃축제 중계" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/><p>재생 불가 영상·비공개 목록은 유튜브에서 열어 연결하세요.</p></aside>}
     {message&&<div className="notice" role="status">{message}<button onClick={()=>setMessage('')} aria-label="안내 닫기">×</button></div>}
     <footer className="chrome"><span>좋은 자리는, 함께 앉은 자리니까.</span><span>SEOUL · HANGANG · JUST US</span></footer>
-    {immersed&&<div className="immersive-controls"><button onClick={togglePause}>{paused?'불꽃 재개':'잠시 멈춤'}</button><button onClick={()=>{setImmersed(false);if(document.fullscreenElement)void document.exitFullscreen();}}>설정 보기 · Esc</button></div>}
+    {immersed&&<div className="immersive-controls"><button onClick={togglePause}>{paused?'불꽃 재개':'잠시 멈춤'}</button><button onClick={()=>{setImmersed(false);if(document.fullscreenElement)void document.exitFullscreen();}}>설정 보기 · Esc</button><span>드래그 · 방향키로 둘러보기 / R 정면</span></div>}
   </main>;
 }
